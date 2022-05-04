@@ -62,7 +62,7 @@ variable "block_public_access_restrict_bucket" {
 variable "environment" {
   description = "Application environment for which this network is being created. must be one of ['Development', 'Integration', 'PreProduction', 'Production', 'QA', 'Staging', 'Test']"
   type        = string
-  default     = "Development"
+  default     = "Staging"
 }
 
 variable "expose_headers" {
