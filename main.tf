@@ -74,7 +74,7 @@ locals {
   acl_list = ["authenticated-read", "aws-exec-read", "log-delivery-write", "private", "public-read", "public-read-write"]
 
   default_tags = {
-    ServiceProvider = "Rackspace"
+    ServiceProvider = "CodeRise"
     Environment     = var.environment
     SkipBucket      = var.rax_mpu_cleanup_enabled ? null : "True"
   }
