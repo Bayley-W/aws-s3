@@ -7,7 +7,7 @@ It will not do s3 origin, which is in another module.
 
 ```HCL
 module "s3" {
-  source = "git@github.com:rackspace-infrastructure-automation/aws-terraform-s3//?ref=v0.12.3"
+  source = "git@github.com:~"
 
   bucket_acl                                 = "private"
   bucket_logging                             = false
@@ -31,38 +31,6 @@ module "s3" {
   }
 }
 ```
-
-Full working references are available at [examples](examples)
-
-## Terraform 0.12 upgrade
-
-Several changes were required while adding terraform 0.12 compatibility.  The following changes should be  
-made when upgrading from a previous release to version 0.12.0 or higher.
-
-### Module variables
-
-The following module variables were updated to better meet current Rackspace style guides:
-
-- `bucket_name` -> `name`
-- `kms_master_key_id` -> `kms_key_id`
-- `bucket_tags` -> `tags`
-
-## Requirements
-
-| Name | Version |
-|------|---------|
-| terraform | >= 0.12 |
-| aws | >= 2.7.0 |
-
-## Providers
-
-| Name | Version |
-|------|---------|
-| aws | >= 2.7.0 |
-
-## Modules
-
-No Modules.
 
 ## Resources
 
@@ -103,7 +71,7 @@ No Modules.
 | object\_lock\_mode | The default Object Lock retention mode you want to apply to new objects placed in this bucket. Valid values are GOVERNANCE and COMPLIANCE. Default is GOVERNANCE (allows administrative override). | `string` | `"GOVERNANCE"` | no |
 | object\_lock\_retention\_days | The retention of the object lock in days. Either days or years must be specified, but not both. | `number` | `null` | no |
 | object\_lock\_retention\_years | The retention of the object lock in years. Either days or years must be specified, but not both. | `number` | `null` | no |
-| rax\_mpu\_cleanup\_enabled | Enable Rackspace default values for cleanup of Multipart Uploads. | `bool` | `true` | no |
+| rax\_mpu\_cleanup\_enabled | Enable default values for cleanup of Multipart Uploads. | `bool` | `true` | no |
 | sse\_algorithm | The server-side encryption algorithm to use. Valid values are AES256, aws:kms, and none | `string` | `"AES256"` | no |
 | tags | A map of tags to be applied to the Bucket. i.e {Environment='Development'} | `map(string)` | `{}` | no |
 | transition\_to\_glacier\_days | Indicates after how many days we are moving current versions to Glacier.  Should be 0 to disable or at least 30 days longer than transition\_to\_ia\_days. i.e. 0 to disable, otherwise 1-999 | `number` | `0` | no |
