@@ -1,218 +1,234 @@
-
-variable "allowed_headers" {
-  description = "Specifies which headers are allowed."
-  type        = list(string)
-  default     = []
+variable "az_count" {
+  description = "Number of AZs to utilize for the subnets"
+  type        = number
+  default     = 2
 }
 
-variable "allowed_methods" {
-  description = "(Required) Specifies which methods are allowed. Can be GET, PUT, POST, DELETE or HEAD."
-  type        = list(string)
-  default     = []
+variable "build_flow_logs" {
+  description = "Whether or not to build flow log components in Cloudwatch Logs"
+  default     = false
+  type        = bool
 }
 
-variable "allowed_origins" {
-  description = "(Required) Specifies which origins are allowed."
-  type        = list(string)
-  default     = []
+variable "build_igw" {
+  description = "Whether or not to build an internet gateway.  If disabled, no public subnets or route tables, internet gateway, or NAT Gateways will be created."
+  type        = bool
+  default     = true
 }
 
-variable "bucket_acl" {
-  description = "Bucket ACL. Must be either authenticated-read, aws-exec-read, log-delivery-write, private, public-read or public-read-write. For more details https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl"
+variable "build_nat_gateways" {
+  description = "Whether or not to build a NAT gateway per AZ.  if `build_igw` is set to false, this value is ignored."
+  type        = bool
+  default     = true
+}
+
+variable "build_s3_flow_logs" {
+  description = "Whether or not to build flow log components in s3"
+  type        = bool
+  default     = false
+}
+
+variable "build_vpn" {
+  description = "Whether or not to build a VPN gateway"
+  type        = bool
+  default     = false
+}
+
+variable "cidr_range" {
+  description = "CIDR range for the VPC"
   type        = string
-  default     = "private"
+  default     = "172.18.0.0/19"
 }
 
-variable "bucket_logging" {
-  description = "Enable bucket logging. Will store logs in another existing bucket. You must give the log-delivery group WRITE and READ_ACP permissions to the target bucket. i.e. true | false"
-  type        = bool
-  default     = false
+variable "cloudwatch_flowlog_retention" {
+  description = "The number of days to retain flowlogs in CLoudwatch Logs. Valid values are: [0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]. A value of `0` will retain indefinitely."
+  type        = number
+  default     = 14
 }
 
-variable "block_public_access" {
-  description = "Block various forms of public access on a per bucket level"
-  type        = bool
-  default     = false
+variable "custom_azs" {
+  description = "A list of AZs that VPC resources will reside in"
+  type        = list(string)
+  default     = []
 }
 
-variable "block_public_access_acl" {
-  description = "Related to block_public_access. PUT Bucket acl and PUT Object acl calls will fail if the specified ACL allows public access. PUT Object calls will fail if the request includes an object ACL."
+variable "default_tenancy" {
+  description = "Default tenancy for instances. Either multi-tenant (default) or single-tenant (dedicated)"
+  type        = string
+  default     = "default"
+}
+
+variable "domain_name" {
+  description = "Custom domain name for the VPC"
+  type        = string
+  default     = ""
+}
+
+variable "domain_name_servers" {
+  description = "Array of custom domain name servers"
+  type        = list(string)
+  default     = ["AmazonProvidedDNS"]
+}
+
+variable "enable_dns_hostnames" {
+  description = "Whether or not to enable DNS hostnames for the VPC"
   type        = bool
   default     = true
 }
 
-variable "block_public_access_ignore_acl" {
-  description = "Related to block_public_access. Ignore public ACLs on this bucket and any objects that it contains."
-  type        = bool
-  default     = true
-}
-
-variable "block_public_access_policy" {
-  description = "Related to block_public_access. Reject calls to PUT Bucket policy if the specified bucket policy allows public access."
-  type        = bool
-  default     = true
-}
-
-variable "block_public_access_restrict_bucket" {
-  description = "Related to block_public_access. Only the bucket owner and AWS Services can access this buckets if it has a public policy."
+variable "enable_dns_support" {
+  description = "Whether or not to enable DNS support for the VPC"
   type        = bool
   default     = true
 }
 
 variable "environment" {
-  description = "Application environment for which this network is being created. must be one of ['Development', 'Integration', 'PreProduction', 'Production', 'QA', 'Staging', 'Test']"
+  description = "Application environment for which this network is being created. e.g. Development/Production"
   type        = string
   default     = "Staging"
 }
 
-variable "expose_headers" {
-  description = " Specifies expose header in the response."
-  type        = list(string)
-  default     = []
+variable "logging_bucket_access_control" {
+  description = "Define ACL for Bucket from one of the [canned ACL](https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl): private, public-read, public-read-write, aws-exec-read, authenticated-read, log-delivery-write"
+  type        = string
+  default     = "private"
 }
 
-variable "force_destroy_bucket" {
-  description = "A boolean that indicates all objects should be deleted from the bucket so that the bucket can be destroyed without error. These objects are not recoverable."
-  type        = bool
-  default     = false
+variable "logging_bucket_encryption" {
+  description = "Enable default bucket encryption. i.e. AES256 or aws:kms"
+  type        = string
+  default     = "AES256"
 }
 
-variable "kms_key_id" {
+variable "logging_bucket_encryption_kms_mster_key" {
   description = "The AWS KMS master key ID used for the SSE-KMS encryption. This can only be used when you set the value of sse_algorithm as aws:kms."
   type        = string
   default     = ""
 }
 
-variable "lifecycle_enabled" {
-  description = "Enable object lifecycle management. i.e. true | false"
+variable "logging_bucket_force_destroy" {
+  description = "Whether all objects should be deleted from the bucket so that the bucket can be destroyed without error. These objects are not recoverable. ie. true"
   type        = bool
   default     = false
 }
 
-variable "lifecycle_rule_prefix" {
-  description = "Object keyname prefix identifying one or more objects to which the rule applies. Set as an empty string to target the whole bucket."
-  type        = string
-  default     = ""
-}
-
 variable "logging_bucket_name" {
-  description = "Name of the existing bucket where the logs will be stored."
+  description = "Bucket name to store s3 flow logs. If empty, a random bucket name is generated. Use in conjuction with `build_s3_flow_logs`"
   type        = string
   default     = ""
 }
 
 variable "logging_bucket_prefix" {
-  description = "Prefix for all log object keys. i.e. logs/"
+  description = "The prefix for the location in the S3 bucket. If you don't specify a prefix, the access logs are stored in the root of the bucket."
   type        = string
   default     = ""
 }
 
-variable "max_age_seconds" {
-  description = "Specifies time in seconds that browser can cache the response for a preflight request."
-  type        = number
-  default     = 600
-}
-
 variable "name" {
-  description = "The name of the S3 bucket for the access logs. The bucket name can contain only lowercase letters, numbers, periods (.), and dashes (-). Must be globally unique. If changed, forces a new resource."
+  description = "Name prefix for the VPC and related resources"
   type        = string
 }
 
-variable "noncurrent_version_expiration_days" {
-  description = "Indicates after how many days we are deleting previous version of objects.  Set to 0 to disable or at least 365 days longer than noncurrent_version_transition_glacier_days. i.e. 0 to disable, 1-999 otherwise"
-  type        = number
-  default     = 0
+variable "private_cidr_ranges" {
+  description = "An array of CIDR ranges to use for private subnets"
+  type        = list(string)
+
+  default = [
+    "172.18.16.0/22",
+    "172.18.20.0/22",
+    "172.18.24.0/22",
+  ]
 }
 
-variable "noncurrent_version_transition_glacier_days" {
-  description = "Indicates after how many days we are moving previous versions to Glacier.  Should be 0 to disable or at least 30 days longer than noncurrent_version_transition_ia_days. i.e. 0 to disable, 1-999 otherwise"
-  type        = number
-  default     = 0
+variable "private_subnet_names" {
+  description = <<EOF
+Text that will be included in generated name for private subnets. Given the default value of `["Private"]`, subnet
+names in the form \"<vpc_name>-Private<count+1>\", e.g. \"MyVpc-Public2\" will be produced. Otherwise, given a
+list of names with length the same as the value of `az_count`, the first `az_count` subnets will be named using
+the first string in the list, the second `az_count` subnets will be named using the second string, and so on.
+EOF
+
+  type    = list(string)
+  default = ["Private"]
 }
 
-variable "noncurrent_version_transition_ia_days" {
-  description = "Indicates after how many days we are moving previous version objects to Standard-IA storage. Set to 0 to disable."
-  type        = number
-  default     = 0
+variable "private_subnet_tags" {
+  description = "A list of maps containing tags to be applied to private subnets. List should either be the same length as the number of AZs to apply different tags per set of subnets, or a length of 1 to apply the same tags across all private subnets."
+  type        = list(map(string))
+
+  default = [{}]
 }
 
-variable "object_expiration_days" {
-  description = "Indicates after how many days we are deleting current version of objects. Set to 0 to disable or at least 365 days longer than TransitionInDaysGlacier. i.e. 0 to disable, otherwise 1-999"
-  type        = number
-  default     = 0
+variable "private_subnets_per_az" {
+  description = <<EOF
+Number of private subnets to create in each AZ. NOTE: This value, when multiplied by the value of `az_count`,
+should not exceed the length of the `private_cidr_ranges` list!
+EOF
+
+  type    = number
+  default = 1
 }
 
-variable "object_lock_enabled" {
-  description = "Indicates whether this bucket has an Object Lock configuration enabled. Disabled by default. You can only enable S3 Object Lock for new buckets. If you need to turn on S3 Object Lock for an existing bucket, please contact AWS Support."
+variable "public_cidr_ranges" {
+  description = "An array of CIDR ranges to use for public subnets"
+  type        = list(string)
+
+  default = [
+    "172.18.0.0/22",
+    "172.18.4.0/22",
+    "172.18.8.0/22",
+  ]
+}
+
+variable "public_subnet_names" {
+  description = <<EOF
+Text that will be included in generated name for public subnets. Given the default value of `["Public"]`, subnet
+names in the form \"<vpc_name>-Public<count+1>\", e.g. \"MyVpc-Public1\" will be produced. Otherwise, given a
+list of names with length the same as the value of `az_count`, the first `az_count` subnets will be named using
+the first string in the list, the second `az_count` subnets will be named using the second string, and so on.
+EOF
+
+  type    = list(string)
+  default = ["Public"]
+}
+
+variable "public_subnet_tags" {
+  description = "A list of maps containing tags to be applied to public subnets. List should either be the same length as the number of AZs to apply different tags per set of subnets, or a length of 1 to apply the same tags across all public subnets."
+  type        = list(map(string))
+
+  default = [{}]
+}
+
+variable "public_subnets_per_az" {
+  description = <<EOF
+Number of public subnets to create in each AZ. NOTE: This value, when multiplied by the value of `az_count`,
+should not exceed the length of the `public_cidr_ranges` list!
+EOF
+
+  type    = number
+  default = 1
+}
+
+variable "s3_flowlog_retention" {
+  description = "The number of days to retain flowlogs in s3. A value of `0` will retain indefinitely."
+  type        = number
+  default     = 14
+}
+
+variable "single_nat" {
+  description = "Deploy VPC in single NAT mode."
   type        = bool
   default     = false
 }
-variable "object_lock_mode" {
-  description = "The default Object Lock retention mode you want to apply to new objects placed in this bucket. Valid values are GOVERNANCE and COMPLIANCE. Default is GOVERNANCE (allows administrative override)."
-  type        = string
-  default     = "GOVERNANCE"
-}
-variable "object_lock_retention_days" {
-  description = "The retention of the object lock in days. Either days or years must be specified, but not both."
-  type        = number
-  default     = null
-}
-variable "object_lock_retention_years" {
-  description = "The retention of the object lock in years. Either days or years must be specified, but not both."
-  type        = number
-  default     = null
-}
 
-variable "rax_mpu_cleanup_enabled" {
-  description = "Enable Rackspace default values for cleanup of Multipart Uploads."
+variable "spoke_vpc" {
+  description = "Whether or not the VPN gateway is a spoke of a Transit VPC"
   type        = bool
-  default     = true
-}
-
-variable "sse_algorithm" {
-  description = "The server-side encryption algorithm to use. Valid values are AES256, aws:kms, and none"
-  type        = string
-  default     = "AES256"
+  default     = false
 }
 
 variable "tags" {
-  description = "A map of tags to be applied to the Bucket. i.e {Environment='Development'}"
+  description = "Optional tags to be applied on top of the base tags on all resources"
   type        = map(string)
   default     = {}
-}
-
-variable "transition_to_glacier_days" {
-  description = "Indicates after how many days we are moving current versions to Glacier.  Should be 0 to disable or at least 30 days longer than transition_to_ia_days. i.e. 0 to disable, otherwise 1-999"
-  type        = number
-  default     = 0
-}
-
-variable "transition_to_ia_days" {
-  description = "Indicates after how many days we are moving current objects to Standard-IA storage. i.e. 0 to disable, otherwise 1-999"
-  type        = number
-  default     = 0
-}
-
-variable "versioning" {
-  description = "Enable bucket versioning. i.e. true | false"
-  type        = bool
-  default     = false
-}
-
-variable "website" {
-  description = "Use bucket as a static website. i.e. true | false"
-  type        = bool
-  default     = false
-}
-
-variable "website_error" {
-  description = "Location of Error HTML file. i.e. error.html"
-  type        = string
-  default     = "error.html"
-}
-
-variable "website_index" {
-  description = "Location of Index HTML file. i.e index.html"
-  type        = string
-  default     = "index.html"
 }

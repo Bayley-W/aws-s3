@@ -1,34 +1,63 @@
-output "bucket_arn" {
-  description = "The ARN of the bucket. Will be of format arn:aws:s3:::bucketname."
-  value       = aws_s3_bucket.s3_bucket.arn
+output "default_sg" {
+  description = "The ID of the default SG for the VPC"
+  value       = aws_vpc.vpc.default_security_group_id
 }
 
-output "bucket_domain_name" {
-  description = "The bucket domain name. Will be of format bucketname.s3.amazonaws.com."
-  value       = aws_s3_bucket.s3_bucket.bucket_domain_name
+output "internet_gateway" {
+  description = "The ID of the Internet Gateway"
+  value       = aws_internet_gateway.igw.*.id
 }
 
-output "bucket_hosted_zone_id" {
-  description = "The Route 53 Hosted Zone ID for this bucket's region."
-  value       = aws_s3_bucket.s3_bucket.hosted_zone_id
+output "nat_gateway" {
+  description = "The ID of the NAT Gateway if one was created"
+  value       = aws_nat_gateway.nat.*.id
 }
 
-output "bucket_id" {
-  description = "The name of the bucket."
-  value       = aws_s3_bucket.s3_bucket.id
+output "nat_gateway_ids" {
+  description = "The ID of the NAT Gateway if one was created"
+  value       = aws_eip.nat_eip.*.id
 }
 
-output "bucket_region" {
-  description = "The AWS region this bucket resides in."
-  value       = aws_s3_bucket.s3_bucket.region
+output "nat_gateway_private_ips" {
+  description = "The private IPs of the NAT Gateway if one was created"
+  value       = aws_eip.nat_eip.*.private_ip
 }
 
-output "bucket_website_domain" {
-  description = "The domain of the website endpoint, if the bucket is configured with a website. If not, this will be an empty string. This is used to create Route 53 alias records."
-  value       = var.website ? aws_s3_bucket.s3_bucket.website_domain : ""
+output "nat_gateway_public_ips" {
+  description = "The public IPs of the NAT Gateway if one was created"
+  value       = aws_eip.nat_eip.*.public_ip
 }
 
-output "bucket_website_endpoint" {
-  description = "The website endpoint, if the bucket is configured with a website. If not, this will be an empty string."
-  value       = var.website ? aws_s3_bucket.s3_bucket.website_endpoint : ""
+output "private_route_tables" {
+  description = "The IDs for the private route tables"
+  value       = aws_route_table.private_route_table.*.id
+}
+
+output "private_subnets" {
+  description = "The IDs for the private subnets"
+  value       = aws_subnet.private_subnet.*.id
+
+  depends_on = [aws_route_table_association.private_route_association]
+}
+
+output "public_route_tables" {
+  description = "The IDs for the public route tables"
+  value       = aws_route_table.public_route_table.*.id
+}
+
+output "public_subnets" {
+  description = "The IDs of the public subnets"
+  value       = aws_subnet.public_subnet.*.id
+
+  depends_on = [aws_route_table_association.public_route_association]
+}
+
+output "vpc_id" {
+  description = "The ID of the VPC"
+  value       = aws_vpc.vpc.id
+}
+
+output "vpn_gateway" {
+  description = "The ID of the VPN gateway if one was created"
+  value       = join(" ", aws_vpn_gateway.vpn_gateway.*.id)
 }

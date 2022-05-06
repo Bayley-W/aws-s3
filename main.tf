@@ -1,52 +1,29 @@
 /**
- * # aws-terraform-s3
+ * # aws-terraform-vpc_basenetwork
  *
- * This module builds a s3 bucket with varying options.
- * It will not do s3 origin, which is in another module.
+ * This module sets up basic network components for an account in a specific region. Optionally it will setup a basic VPN gateway and VPC flow logs.
  *
  * ## Basic Usage
  *
  * ```HCL
- * module "s3" {
- *   source = "git@github.com:rackspace-infrastructure-automation/aws-terraform-s3//?ref=v0.12.3"
+ * module "vpc" {
+ *   source = "git@github.com:~"
  *
- *   bucket_acl                                 = "private"
- *   bucket_logging                             = false
- *   environment                                = "Development"
- *   lifecycle_enabled                          = true
- *   name                                       = "${random_string.s3_rstring.result}-example-s3-bucket"
- *   noncurrent_version_expiration_days         = "425"
- *   noncurrent_version_transition_glacier_days = "60"
- *   noncurrent_version_transition_ia_days      = "30"
- *   object_expiration_days                     = "425"
- *   transition_to_glacier_days                 = "60"
- *   transition_to_ia_days                      = "30"
- *   versioning                                 = true
- *   website                                    = true
- *   website_error                              = "error.html"
- *   website_index                              = "index.html"
- *
- *   tags = {
- *     RightSaid = "Fred"
- *     LeftSaid  = "George"
- *   }
+ *   vpc_name = "MyVPC"
  * }
  * ```
  *
- * Full working references are available at [examples](examples)
+ *  Full working references are available at [examples](examples)
+ * ## Default Resources
  *
- * ## Terraform 0.12 upgrade
+ * By default only `vpc_name` is required to be set. Unless changed `aws_region` defaults to `eu-west-2` and will need to be updated for other regions. `source` will also need to be declared depending on where the module lives. Given default settings the following resources are created:
  *
- * Several changes were required while adding terraform 0.12 compatibility.  The following changes should be
- * made when upgrading from a previous release to version 0.12.0 or higher.
- *
- * ### Module variables
- *
- * The following module variables were updated to better meet current Rackspace style guides:
- *
- * - `bucket_name` -> `name`
- * - `kms_master_key_id` -> `kms_key_id`
- * - `bucket_tags` -> `tags`
+ *  - VPC Flow Logs
+ *  - 2 AZs with public/private subnets from the list of 3 static CIDRs ranges available for each as defaults
+ *  - Public/private subnets with the count related to custom_azs if defined or region AZs automatically calculated by Terraform otherwise
+ *  - NAT Gateways will be created in each AZ's first public subnet
+ *  - EIPs will be created in all public subnets for NAT gateways to use
+ *  - Route Tables, including routes to NAT gateways if applicable
  *
  */
 
@@ -66,316 +43,331 @@ terraform {
 }
 
 locals {
+  default_domain_name = data.aws_region.current.name == "eu-west-2" ? "ec2.internal" : format("%s.compute.internal", data.aws_region.current.name)
+  domain_name         = var.domain_name == "" ? local.default_domain_name : var.domain_name
 
-  ##############################################################
-  # Bucket local variables
-  ##############################################################
-
-  acl_list = ["authenticated-read", "aws-exec-read", "log-delivery-write", "private", "public-read", "public-read-write"]
-
-  default_tags = {
+  base_tags = {
     ServiceProvider = "CodeRise"
     Environment     = var.environment
-    SkipBucket      = var.rax_mpu_cleanup_enabled ? null : "True"
   }
 
-  ##############################################################
-  # CORS rules local variables
-  ##############################################################
+  single_nat_tag = {
+    true = {
+      HA = "Disabled"
+    }
 
-  cors_rules = {
-    enabled = [
-      {
-        allowed_headers = var.allowed_headers
-        allowed_methods = var.allowed_methods
-        allowed_origins = var.allowed_origins
-        expose_headers  = var.expose_headers
-        max_age_seconds = var.max_age_seconds
-      },
-    ]
-    disabled = []
+    false = {}
   }
 
-  ##############################################################
-  # Lifecycle Rules local variables
-  ##############################################################
+  nat_count = var.single_nat ? 1 : var.az_count
 
-  lifecycle_rules = {
-    enabled = [
-      {
-        enabled                       = var.lifecycle_enabled
-        expiration                    = local.object_expiration[var.object_expiration_days > 0 ? "enabled" : "disabled"]
-        noncurrent_version_expiration = local.noncurrent_version_expiration[var.noncurrent_version_expiration_days > 0 ? "enabled" : "disabled"]
-        prefix                        = var.lifecycle_rule_prefix
+  tags = merge(
+    var.tags,
+    local.base_tags,
+  )
 
-        noncurrent_version_transition = concat(
-          local.noncurrent_version_transition[var.noncurrent_version_transition_ia_days > 0 ? "ia_enabled" : "disabled"],
-          local.noncurrent_version_transition[var.noncurrent_version_transition_glacier_days > 0 ? "glacier_enabled" : "disabled"],
-        )
+  azs = slice(
+    coalescelist(var.custom_azs, data.aws_availability_zones.available.names),
+    0,
+    var.az_count,
+  )
+}
 
-        transition = concat(
-          local.transition[var.transition_to_ia_days > 0 ? "ia_enabled" : "disabled"],
-          local.transition[var.transition_to_glacier_days > 0 ? "glacier_enabled" : "disabled"],
-        )
-      },
-    ]
-    mpu_cleanup_enabled = [
-      {
-        abort_incomplete_multipart_upload_days = 7
-        enabled                                = true
-        id                                     = "rax-cleanup-incomplete-mpu-objects"
-        expiration                             = [{}]
-      },
-    ]
-    disabled = []
-  }
+data "aws_availability_zones" "available" {}
 
-  object_expiration = {
-    enabled  = [{ days = var.object_expiration_days }]
-    disabled = []
-  }
+data "aws_region" "current" {}
 
-  noncurrent_version_expiration = {
-    enabled  = [{ days = var.noncurrent_version_expiration_days }]
-    disabled = []
-  }
+#############
+# Basic VPC
+#############
 
-  noncurrent_version_transition = {
-    ia_enabled = [
-      {
-        days          = var.noncurrent_version_transition_ia_days
-        storage_class = "STANDARD_IA"
-      },
-    ]
-    glacier_enabled = [
-      {
-        days          = var.noncurrent_version_transition_glacier_days
-        storage_class = "GLACIER"
-      },
-    ]
-    disabled = []
-  }
+resource "aws_vpc" "vpc" {
+  cidr_block           = var.cidr_range
+  enable_dns_hostnames = var.enable_dns_hostnames
+  enable_dns_support   = var.enable_dns_support
+  instance_tenancy     = var.default_tenancy
 
-  transition = {
-    ia_enabled = [
-      {
-        days          = var.transition_to_ia_days
-        storage_class = "STANDARD_IA"
-      },
-    ]
-    glacier_enabled = [
-      {
-        days          = var.transition_to_glacier_days
-        storage_class = "GLACIER"
-      },
-    ]
-    disabled = []
-  }
+  tags = merge(
+    local.tags,
+    local.single_nat_tag[var.single_nat],
+    {
+      Name = var.name
+    },
+  )
 
-  ##############################################################
-  # Bucket Logging local variables
-  ##############################################################
-
-  bucket_logging = {
-    enabled = [
-      {
-        target_bucket = var.logging_bucket_name
-        target_prefix = var.logging_bucket_prefix
-      },
-    ]
-    disabled = []
-  }
-
-  ##############################################################
-  # Bucket object lock local variables
-  ##############################################################
-
-  object_lock_rule = {
-    Enabled = [
-      {
-        rule = [
-          {
-            mode  = var.object_lock_mode
-            days  = var.object_lock_retention_days
-            years = var.object_lock_retention_years
-          },
-        ]
-      },
-    ]
-    Disabled = []
-  }
-
-  ##############################################################
-  # Server side encryption rule local variables
-  ##############################################################
-
-  server_side_encryption_rule = {
-    enabled = [
-      {
-        rule = [
-          {
-            apply_server_side_encryption_by_default = [
-              {
-                kms_master_key_id = var.kms_key_id
-                sse_algorithm     = var.sse_algorithm
-              },
-            ]
-          },
-        ]
-      },
-    ]
-    disabled = []
-  }
-
-  ##############################################################
-  # Bucket website local variables
-  ##############################################################
-
-  bucket_website_config = {
-    enabled = [
-      {
-        index_document = var.website_index
-        error_document = var.website_error
-      },
-    ]
-    disabled = []
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
-resource "aws_s3_bucket" "s3_bucket" {
-  acl           = contains(local.acl_list, var.bucket_acl) ? var.bucket_acl : "ACL_ERROR"
-  bucket        = var.name
-  force_destroy = var.force_destroy_bucket
-  tags          = merge(var.tags, local.default_tags)
+resource "aws_vpc_dhcp_options" "dhcp_options" {
+  domain_name         = local.domain_name
+  domain_name_servers = var.domain_name_servers
 
-  dynamic "cors_rule" {
-    for_each = local.cors_rules[length(var.allowed_origins) > 0 ? "enabled" : "disabled"]
-    content {
-      allowed_headers = lookup(cors_rule.value, "allowed_headers", null)
-      allowed_methods = cors_rule.value.allowed_methods
-      allowed_origins = cors_rule.value.allowed_origins
-      expose_headers  = lookup(cors_rule.value, "expose_headers", null)
-      max_age_seconds = lookup(cors_rule.value, "max_age_seconds", null)
+  tags = merge(
+    local.tags,
+    {
+      Name = "${var.name}-DHCPOptions"
+    },
+  )
+}
+
+resource "aws_vpc_dhcp_options_association" "dhcp_options_association" {
+  dhcp_options_id = aws_vpc_dhcp_options.dhcp_options.id
+  vpc_id          = aws_vpc.vpc.id
+}
+
+resource "aws_internet_gateway" "igw" {
+  count = var.build_igw ? 1 : 0
+
+  vpc_id = aws_vpc.vpc.id
+
+  tags = merge(
+    local.tags,
+    {
+      Name = format("%s-IGW", var.name)
+    },
+  )
+}
+
+#############
+# NAT Gateway
+#############
+
+resource "aws_eip" "nat_eip" {
+  count = var.build_nat_gateways && var.build_igw ? local.nat_count : 0
+
+  vpc = true
+
+  tags = merge(
+    local.tags,
+    {
+      Name = format("%s-NATEIP%d", var.name, count.index + 1)
+    },
+  )
+
+  depends_on = [aws_internet_gateway.igw]
+}
+
+resource "aws_nat_gateway" "nat" {
+  count = var.build_nat_gateways && var.build_igw ? local.nat_count : 0
+
+  allocation_id = element(aws_eip.nat_eip.*.id, count.index)
+  subnet_id     = element(aws_subnet.public_subnet.*.id, count.index)
+
+  tags = merge(
+    local.tags,
+    local.single_nat_tag[var.single_nat],
+    {
+      Name = format("%s-NATGW%d", var.name, count.index + 1)
+    },
+  )
+
+  depends_on = [aws_internet_gateway.igw]
+}
+
+#############
+# Subnets
+#############
+
+resource "aws_subnet" "public_subnet" {
+  count = var.build_igw ? var.az_count * var.public_subnets_per_az : 0
+
+  availability_zone       = element(local.azs, count.index)
+  cidr_block              = var.public_cidr_ranges[count.index]
+  map_public_ip_on_launch = true
+  vpc_id                  = aws_vpc.vpc.id
+
+  tags = merge(
+    var.public_subnet_tags[length(var.public_subnet_tags) == 1 ? 0 : floor(count.index / var.az_count)],
+    local.tags,
+    local.single_nat_tag[var.single_nat],
+    {
+      Name = format(
+        "%s-%s%d",
+        var.name,
+        element(var.public_subnet_names, floor(count.index / var.az_count)),
+        count.index % var.az_count + 1,
+      )
+    },
+  )
+}
+
+resource "aws_subnet" "private_subnet" {
+  count = var.az_count * var.private_subnets_per_az
+
+  availability_zone       = element(local.azs, count.index)
+  cidr_block              = var.private_cidr_ranges[count.index]
+  map_public_ip_on_launch = false
+  vpc_id                  = aws_vpc.vpc.id
+
+  tags = merge(
+    var.private_subnet_tags[length(var.private_subnet_tags) == 1 ? 0 : floor(count.index / var.az_count)],
+    local.tags,
+    local.single_nat_tag[var.single_nat],
+    {
+      Name = format(
+        "%s-%s%d",
+        var.name,
+        element(var.private_subnet_names, floor(count.index / var.az_count)),
+        count.index % var.az_count + 1,
+      )
+    },
+  )
+}
+
+#########################
+# Route Tables and Routes
+#########################
+
+resource "aws_route_table" "public_route_table" {
+  count = var.build_igw ? 1 : 0
+
+  vpc_id = aws_vpc.vpc.id
+
+  tags = merge(
+    local.tags,
+    {
+      Name = format("%s-PublicRouteTable", var.name)
+    },
+  )
+}
+
+resource "aws_route_table" "private_route_table" {
+  count = var.az_count
+
+  vpc_id = aws_vpc.vpc.id
+
+  tags = merge(
+    local.tags,
+    local.single_nat_tag[var.single_nat],
+    {
+      Name = format("%s-PrivateRouteTable%d", var.name, count.index + 1)
+    },
+  )
+}
+
+resource "aws_route" "public_routes" {
+  count = var.build_igw ? 1 : 0
+
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.igw[0].id
+  route_table_id         = aws_route_table.public_route_table[0].id
+}
+
+resource "aws_route" "private_routes" {
+  count = var.build_nat_gateways && var.build_igw ? var.az_count : 0
+
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = element(aws_nat_gateway.nat.*.id, count.index)
+  route_table_id         = element(aws_route_table.private_route_table.*.id, count.index)
+}
+
+resource "aws_route_table_association" "public_route_association" {
+  count = var.build_igw ? var.az_count * var.public_subnets_per_az : 0
+
+  route_table_id = aws_route_table.public_route_table[0].id
+  subnet_id      = element(aws_subnet.public_subnet.*.id, count.index)
+}
+
+resource "aws_route_table_association" "private_route_association" {
+  count = var.az_count * var.private_subnets_per_az
+
+  route_table_id = element(aws_route_table.private_route_table.*.id, count.index)
+  subnet_id      = element(aws_subnet.private_subnet.*.id, count.index)
+}
+
+#####
+# VPN
+#####
+
+resource "aws_vpn_gateway" "vpn_gateway" {
+  count = var.build_vpn ? 1 : 0
+
+  vpc_id = aws_vpc.vpc.id
+
+  tags = merge(
+    local.tags,
+    {
+      Name               = format("%s-VPNGateway", var.name)
+      "transitvpc:spoke" = var.spoke_vpc
+    },
+  )
+}
+
+resource "aws_vpn_gateway_route_propagation" "vpn_routes_public" {
+  count = var.build_vpn ? 1 : 0
+
+  route_table_id = aws_route_table.public_route_table[0].id
+  vpn_gateway_id = aws_vpn_gateway.vpn_gateway[0].id
+}
+
+resource "aws_vpn_gateway_route_propagation" "vpn_routes_private" {
+  count = var.build_vpn ? length(var.private_cidr_ranges) : 0
+
+  route_table_id = element(aws_route_table.private_route_table.*.id, count.index)
+  vpn_gateway_id = aws_vpn_gateway.vpn_gateway[0].id
+}
+
+###########
+# Flow Logs
+###########
+
+resource "aws_flow_log" "s3_vpc_log" {
+  count = var.build_s3_flow_logs ? 1 : 0
+
+  log_destination      = aws_s3_bucket.vpc_log_bucket[0].arn
+  log_destination_type = "s3"
+  traffic_type         = "ALL"
+  vpc_id               = aws_vpc.vpc.id
+}
+
+resource "aws_s3_bucket" "vpc_log_bucket" {
+  count = var.build_s3_flow_logs ? 1 : 0
+
+  acl           = var.logging_bucket_access_control
+  bucket        = var.logging_bucket_name
+  force_destroy = var.logging_bucket_force_destroy
+  tags          = local.tags
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        kms_master_key_id = var.logging_bucket_encryption_kms_mster_key
+        sse_algorithm     = var.logging_bucket_encryption
+      }
     }
   }
 
-  dynamic "lifecycle_rule" {
-    for_each = concat(
-      local.lifecycle_rules[(var.lifecycle_enabled ? "enabled" : "disabled")],
-      local.lifecycle_rules[(var.rax_mpu_cleanup_enabled ? "mpu_cleanup_enabled" : "disabled")]
-    )
+  lifecycle_rule {
+    enabled = true
+    prefix  = var.logging_bucket_prefix
 
-    content {
-      abort_incomplete_multipart_upload_days = lookup(lifecycle_rule.value, "abort_incomplete_multipart_upload_days", null)
-      enabled                                = lifecycle_rule.value.enabled
-      id                                     = lookup(lifecycle_rule.value, "id", null)
-      prefix                                 = lookup(lifecycle_rule.value, "prefix", null)
-      tags                                   = lookup(lifecycle_rule.value, "tags", null)
-
-      dynamic "expiration" {
-        for_each = lookup(lifecycle_rule.value, "expiration", [])
-        content {
-          date                         = lookup(expiration.value, "date", null)
-          days                         = lookup(expiration.value, "days", null)
-          expired_object_delete_marker = lookup(expiration.value, "expired_object_delete_marker", null)
-        }
-      }
-
-      dynamic "noncurrent_version_expiration" {
-        for_each = lookup(lifecycle_rule.value, "noncurrent_version_expiration", [])
-        content {
-          days = noncurrent_version_expiration.value.days
-        }
-      }
-
-      dynamic "noncurrent_version_transition" {
-        for_each = lookup(lifecycle_rule.value, "noncurrent_version_transition", [])
-        content {
-          days          = noncurrent_version_transition.value.days
-          storage_class = noncurrent_version_transition.value.storage_class
-        }
-      }
-
-      dynamic "transition" {
-        for_each = lookup(lifecycle_rule.value, "transition", [])
-        content {
-          date          = lookup(transition.value, "date", null)
-          days          = lookup(transition.value, "days", null)
-          storage_class = transition.value.storage_class
-        }
-      }
-    }
-  }
-
-  dynamic "logging" {
-    for_each = local.bucket_logging[var.bucket_logging ? "enabled" : "disabled"]
-    content {
-      target_bucket = logging.value.target_bucket
-      target_prefix = lookup(logging.value, "target_prefix", null)
-    }
-  }
-
-  dynamic "object_lock_configuration" {
-    for_each = local.object_lock_rule[var.object_lock_enabled ? "Enabled" : "Disabled"]
-    content {
-      object_lock_enabled = "Enabled" // The only valid value when this configuration is present
-      dynamic "rule" {
-        for_each = lookup(object_lock_configuration.value, "rule", [])
-        content {
-          default_retention {
-            mode  = lookup(rule.value, "mode", "GOVERNANCE")
-            days  = lookup(rule.value, "days", null)
-            years = lookup(rule.value, "years", null)
-          }
-        }
-      }
-    }
-  }
-
-  dynamic "server_side_encryption_configuration" {
-    for_each = local.server_side_encryption_rule[var.sse_algorithm == "none" ? "disabled" : "enabled"]
-    content {
-      dynamic "rule" {
-        for_each = lookup(server_side_encryption_configuration.value, "rule", [])
-        content {
-          dynamic "apply_server_side_encryption_by_default" {
-            for_each = lookup(rule.value, "apply_server_side_encryption_by_default", [])
-            content {
-              kms_master_key_id = lookup(apply_server_side_encryption_by_default.value, "kms_master_key_id", null)
-              sse_algorithm     = apply_server_side_encryption_by_default.value.sse_algorithm
-            }
-          }
-        }
-      }
-    }
-  }
-
-  versioning {
-    enabled = var.versioning
-  }
-
-  dynamic "website" {
-    for_each = local.bucket_website_config[var.website ? "enabled" : "disabled"]
-    content {
-      error_document           = lookup(website.value, "error_document", null)
-      index_document           = lookup(website.value, "index_document", null)
-      redirect_all_requests_to = lookup(website.value, "redirect_all_requests_to", null)
-      routing_rules            = lookup(website.value, "routing_rules", null)
+    expiration {
+      days = var.s3_flowlog_retention
     }
   }
 }
 
-##############################################################
-# Public Access Block Settings
-##############################################################
+resource "aws_iam_role" "flowlog_role" {
+  count = var.build_flow_logs ? 1 : 0
 
-resource "aws_s3_bucket_public_access_block" "block_public_access_settings" {
-  count = var.block_public_access ? 1 : 0
+  name = "${var.name}-FlowLogsRole"
 
-  bucket = aws_s3_bucket.s3_bucket.id
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "vpc-flow-logs.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
 
-  block_public_acls       = var.block_public_access_acl
-  block_public_policy     = var.block_public_access_policy
-  ignore_public_acls      = var.block_public_access_ignore_acl
-  restrict_public_buckets = var.block_public_access_restrict_bucket
 }
